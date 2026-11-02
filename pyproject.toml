@@ -41,3 +41,9 @@ web = [
 
 [project.scripts]
 pipediag = "pipediag.cli:main"
+
+
+[project.urls]
+Homepage = "https://github.com/LikhithDathi/PipeDiag"
+Repository = "https://github.com/LikhithDathi/PipeDiag"
+Issues = "https://github.com/LikhithDathi/PipeDiag/issues"

@@ -80,9 +80,9 @@ python -m pip install "pipediag[web,llm]"
 
 The `llm` extra installs Ollama-related support. The `web` extra installs FastAPI and Uvicorn. These extras are optional and are not part of the base dependency set.
 
-### Install from a local checkout
-
-Clone the repository and install the package:
+### Instgit clone https://github.com/LikhithDathi/PipeDiag.git
+cd PipeDiag
+repository and install the package:
 
 ```bash
 git clone <REPOSITORY_URL>
