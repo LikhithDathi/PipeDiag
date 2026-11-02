@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pipediag"
+version = "0.1.0"
+description = "An explainable diagnostic framework for scikit-learn machine learning pipelines"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "scikit-learn>=1.8"
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+
+[project.optional-dependencies]
+llm = [
+    "ollama>=0.4"
+]
+
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30"
+]
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = ["pipediag*", "web*"]
+
+
+[tool.setuptools.package-data]
+pipediag = ["calibration/*.json"]
+web = [
+    "frontend/dist/*",
+    "frontend/dist/assets/*"
+]
+
+
+[project.scripts]
+pipediag = "pipediag.cli:main"

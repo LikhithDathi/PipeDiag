@@ -1,0 +1,23 @@
+include README.md
+include LICENSE
+include pyproject.toml
+
+recursive-include src/pipediag *.py
+recursive-include src/pipediag/calibration *.json
+recursive-include web/backend *.py
+recursive-include web/frontend/dist *.html *.svg *.js *.css
+
+
+exclude *.py[cod]
+global-exclude SOURCES.txt
+recursive-exclude tests *
+recursive-exclude experiments *
+recursive-exclude __pycache__ *
+
+prune build
+prune dist
+prune .pytest_cache
+prune .venv
+prune venv
+prune src/pipediag.egg-info
+prune web/frontend/node_modules

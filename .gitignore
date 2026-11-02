@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+
+# Build and distribution artifacts
+/build/
+/dist/
+release-test/
+pip-wheel-metadata/
+
+# Frontend dependencies and temporary build files
+web/frontend/node_modules/
+web/frontend/.vite/
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking and linting
+.mypy_cache/
+.ruff_cache/
+
+# Environment secrets
+.env
+.env.*
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated diagnostic artifacts
+artifacts/

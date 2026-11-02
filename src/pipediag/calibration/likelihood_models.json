@@ -1,0 +1,105 @@
+{
+  "model_count": 11,
+  "models": [
+    {
+      "evidence_group": "G1",
+      "hypothesis": "H1",
+      "mean_false": 0.027250356219325526,
+      "mean_true": 0.9585072673275388,
+      "measurement": "default",
+      "std_false": 0.019242513239263397,
+      "std_true": 0.030838522197103205
+    },
+    {
+      "evidence_group": "G2",
+      "hypothesis": "H2",
+      "mean_false": 0.04125,
+      "mean_true": 0.17466666666666666,
+      "measurement": "generalization_gap",
+      "std_false": 0.03639339454717938,
+      "std_true": 0.046671428328499034
+    },
+    {
+      "evidence_group": "G2",
+      "hypothesis": "H7",
+      "mean_false": 0.8631458333333334,
+      "mean_true": 0.73975,
+      "measurement": "training_accuracy",
+      "std_false": 0.07116624890099862,
+      "std_true": 0.07109368818678632
+    },
+    {
+      "evidence_group": "G3",
+      "hypothesis": "H3",
+      "mean_false": 0.08828525890723309,
+      "mean_true": 0.8180567997354962,
+      "measurement": "mean_absolute_standardized_shift",
+      "std_false": 0.01921581211327809,
+      "std_true": 0.2765895868558786
+    },
+    {
+      "evidence_group": "G4",
+      "hypothesis": "H4",
+      "mean_false": 0.39,
+      "mean_true": 0.13999999999999999,
+      "measurement": "minority_class_proportion",
+      "std_false": 0.03741657386773943,
+      "std_true": 0.03741657386773942
+    },
+    {
+      "evidence_group": "G5",
+      "hypothesis": "H5",
+      "mean_false": 0.008,
+      "mean_true": 0.2,
+      "measurement": "missing_value_rate",
+      "std_false": 0.0074833147735478825,
+      "std_true": 0.07071067811865475
+    },
+    {
+      "evidence_group": "G5",
+      "hypothesis": "H7",
+      "mean_false": 0.008,
+      "mean_true": 0.2,
+      "measurement": "missing_value_rate",
+      "std_false": 0.0074833147735478825,
+      "std_true": 0.07071067811865475
+    },
+    {
+      "evidence_group": "G6",
+      "hypothesis": "H6",
+      "mean_false": 0.03509244215233153,
+      "mean_true": 0.062329496274578955,
+      "measurement": "evaluation_standard_error",
+      "std_false": 0.0068516059274643945,
+      "std_true": 0.06003194061628566
+    },
+    {
+      "evidence_group": "G7",
+      "hypothesis": "H7",
+      "mean_false": 0.04,
+      "mean_true": 0.7,
+      "measurement": "constant_feature_ratio",
+      "std_false": 0.048989794855663564,
+      "std_true": 0.14142135623730953
+    },
+    {
+      "evidence_group": "G7",
+      "hypothesis": "H8",
+      "mean_false": 0.04,
+      "mean_true": 0.7,
+      "measurement": "constant_feature_ratio",
+      "std_false": 0.048989794855663564,
+      "std_true": 0.14142135623730953
+    },
+    {
+      "evidence_group": "G8",
+      "hypothesis": "H9",
+      "mean_false": 0.08845238095238095,
+      "mean_true": 0.32726190476190475,
+      "measurement": "execution_failure_rate",
+      "std_false": 0.022174836098809624,
+      "std_true": 0.07929894069572968
+    }
+  ],
+  "schema_version": 1
+}
