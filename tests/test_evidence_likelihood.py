@@ -197,3 +197,55 @@ def test_result_contains_density_values():
 
     assert result["H2"] > 0.0
     assert result["H7"] > 0.0
+
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "evaluate",
+        "evaluate_ratios",
+        "evaluate_log_ratios",
+    ],
+)
+def test_inference_ineligible_evidence_is_skipped(method_name):
+    evaluator = EvidenceLikelihoodEvaluator(
+        registry=create_registry(),
+        evidence_hypothesis_map=EVIDENCE_HYPOTHESIS_MAP,
+    )
+
+    evidence = EvidenceGroup(
+        name="G2",
+        value="CONFIRMED_LEAKAGE",
+        status="observed",
+        metadata={
+            "inference_eligible": False,
+        },
+    )
+
+    result = getattr(evaluator, method_name)(evidence)
+
+    assert result == {}
+
+
+def test_numeric_g1_evidence_remains_eligible_for_inference():
+    registry = LikelihoodModelRegistry()
+    registry.register(
+        "G1",
+        "H1",
+        create_model(),
+    )
+
+    evaluator = EvidenceLikelihoodEvaluator(
+        registry=registry,
+        evidence_hypothesis_map=EVIDENCE_HYPOTHESIS_MAP,
+    )
+
+    evidence = EvidenceGroup(
+        name="G1",
+        value=0.8,
+        status="observed",
+    )
+
+    result = evaluator.evaluate(evidence)
+
+    assert "H1" in result
+    assert result["H1"] > 0.0

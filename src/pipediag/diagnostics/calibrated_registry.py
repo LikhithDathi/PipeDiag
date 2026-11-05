@@ -97,7 +97,9 @@ def load_calibrated_registry(
             "Calibration artifact model_count does not match models length"
         )
 
-    registry = LikelihoodModelRegistry()
+    registry = LikelihoodModelRegistry(
+        preserve_measurement_keys=True
+    )
 
     for entry in models:
         if not isinstance(entry, dict):

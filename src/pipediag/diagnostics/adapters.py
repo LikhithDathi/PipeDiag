@@ -115,6 +115,28 @@ def generalization_to_evidence(
             "metric_name"
         ] = metric_name
 
+
+
+    # Preserve the calibrated G2 measurement contract.
+    if "gap" in measurements:
+        measurements["generalization_gap"] = (
+            measurements["gap"]
+        )
+
+    # Accuracy-specific aliases used by the calibrated
+    # underfitting model and explanation builder.
+    if metric_name == "accuracy":
+        if "train_value" in measurements:
+            measurements["training_accuracy"] = (
+                measurements["train_value"]
+            )
+
+        if "test_value" in measurements:
+            measurements["evaluation_accuracy"] = (
+                measurements["test_value"]
+            )
+
+
     dataset_ids: list[str] = []
 
     for field_name in (

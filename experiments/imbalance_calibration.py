@@ -1,4 +1,7 @@
+
 from __future__ import annotations
+
+from itertools import product
 
 from pipediag.diagnostics.calibration import CalibrationObservation
 
@@ -7,22 +10,26 @@ from experiments.imbalance_pipeline import run_imbalance_pipeline
 
 
 def collect_imbalance_calibration_observations(
-    n_samples: int = 500,
-    n_features: int = 10,
-    random_states: tuple[int, ...] = (1, 2, 3, 4, 5),
+    n_samples: int = 1000,
+    n_features: int = 20,
+    random_states: tuple[int, ...] = tuple(range(1, 21)),
     normal_minority_fractions: tuple[float, ...] = (
-        0.35,
-        0.40,
-        0.45,
-        0.35,
-        0.40,
+        0.26,
+        0.30,
+        0.34,
+        0.38,
+        0.42,
+        0.46,
+        0.49,
     ),
     imbalanced_minority_fractions: tuple[float, ...] = (
-        0.10,
-        0.15,
+        0.05,
+        0.08,
+        0.11,
+        0.14,
+        0.17,
         0.20,
-        0.10,
-        0.15,
+        0.23,
     ),
 ) -> list[CalibrationObservation]:
     if n_samples <= 0:
@@ -34,67 +41,48 @@ def collect_imbalance_calibration_observations(
     if not random_states:
         raise ValueError("random_states must not be empty")
 
-    if len(normal_minority_fractions) != len(random_states):
+    if not normal_minority_fractions:
+        raise ValueError("normal_minority_fractions must not be empty")
+
+    if not imbalanced_minority_fractions:
+        raise ValueError("imbalanced_minority_fractions must not be empty")
+
+    if any(not 0.25 < value < 0.5 for value in normal_minority_fractions):
         raise ValueError(
-            "normal_minority_fractions must have the same length "
-            "as random_states"
+            "Normal fractions must be greater than 0.25 and less than 0.5"
         )
 
-    if len(imbalanced_minority_fractions) != len(random_states):
+    if any(not 0.0 < value < 0.25 for value in imbalanced_minority_fractions):
         raise ValueError(
-            "imbalanced_minority_fractions must have the same length "
-            "as random_states"
+            "Imbalanced fractions must be greater than 0 and less than 0.25"
         )
 
     observations: list[CalibrationObservation] = []
 
-    for (
-        random_state,
-        normal_fraction,
-        imbalanced_fraction,
-    ) in zip(
-        random_states,
-        normal_minority_fractions,
-        imbalanced_minority_fractions,
-    ):
-        normal_result = run_imbalance_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            minority_fraction=normal_fraction,
-            random_state=random_state,
-        )
+    scenarios = (
+        (normal_minority_fractions, False),
+        (imbalanced_minority_fractions, True),
+    )
 
-        normal_evidence = collect_imbalance_evidence(normal_result)
-
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G4",
-                hypothesis="H4",
-                hypothesis_true=False,
-                value=float(normal_evidence.value),
-                measurement="minority_class_proportion",
+    for fractions, hypothesis_true in scenarios:
+        for random_state, fraction in product(random_states, fractions):
+            result = run_imbalance_pipeline(
+                n_samples=n_samples,
+                n_features=n_features,
+                minority_fraction=fraction,
+                random_state=random_state,
             )
-        )
 
-        imbalanced_result = run_imbalance_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            minority_fraction=imbalanced_fraction,
-            random_state=random_state,
-        )
+            evidence = collect_imbalance_evidence(result)
 
-        imbalanced_evidence = collect_imbalance_evidence(
-            imbalanced_result
-        )
-
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G4",
-                hypothesis="H4",
-                hypothesis_true=True,
-                value=float(imbalanced_evidence.value),
-                measurement="minority_class_proportion",
+            observations.append(
+                CalibrationObservation(
+                    evidence_group="G4",
+                    hypothesis="H4",
+                    hypothesis_true=hypothesis_true,
+                    value=float(evidence.value),
+                    measurement="minority_class_proportion",
+                )
             )
-        )
 
     return observations

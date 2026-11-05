@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +11,9 @@ from sklearn.model_selection import train_test_split
 from experiments.dataset import create_dataset
 
 
+DEFAULT_MAX_WILSON_HALF_WIDTH = 0.05
+
+
 @dataclass(frozen=True)
 class EvaluationProblemPipelineResult:
     X_train: np.ndarray
@@ -19,7 +23,9 @@ class EvaluationProblemPipelineResult:
     predictions: np.ndarray
     accuracy: float
     evaluation_sample_count: int
-    evaluation_standard_error: float
+    wilson_interval_half_width: float
+    max_wilson_half_width: float
+    evaluation_precision_adequate: bool
     random_state: int
 
 
@@ -27,6 +33,7 @@ def _validate_parameters(
     n_samples: int,
     n_features: int,
     test_size: float,
+    max_wilson_half_width: float,
 ) -> None:
     if n_samples <= 0:
         raise ValueError("n_samples must be positive")
@@ -35,31 +42,43 @@ def _validate_parameters(
         raise ValueError("n_features must be positive")
 
     if not 0.0 < test_size < 1.0:
+        raise ValueError("test_size must be between 0 and 1")
+
+    if not 0.0 < max_wilson_half_width < 1.0:
         raise ValueError(
-            "test_size must be between 0 and 1"
+            "max_wilson_half_width must be between 0 and 1"
         )
 
 
-def _calculate_accuracy_standard_error(
+def calculate_wilson_interval_half_width(
     accuracy: float,
     sample_count: int,
+    confidence_z: float = 1.96,
 ) -> float:
     if not 0.0 <= accuracy <= 1.0:
-        raise ValueError(
-            "accuracy must be between 0 and 1"
-        )
+        raise ValueError("accuracy must be between 0 and 1")
 
     if sample_count <= 0:
-        raise ValueError(
-            "sample_count must be positive"
-        )
+        raise ValueError("sample_count must be positive")
 
-    variance = (
-        accuracy * (1.0 - accuracy)
-        / sample_count
+    if confidence_z <= 0.0:
+        raise ValueError("confidence_z must be positive")
+
+    n = float(sample_count)
+    z = float(confidence_z)
+
+    denominator = 1.0 + (z * z / n)
+
+    half_width = (
+        z
+        * math.sqrt(
+            accuracy * (1.0 - accuracy) / n
+            + (z * z) / (4.0 * n * n)
+        )
+        / denominator
     )
 
-    return float(math.sqrt(variance))
+    return float(half_width)
 
 
 def run_evaluation_problem_pipeline(
@@ -67,12 +86,14 @@ def run_evaluation_problem_pipeline(
     n_features: int = 10,
     test_size: float = 0.2,
     random_state: int = 42,
+    max_wilson_half_width: float = DEFAULT_MAX_WILSON_HALF_WIDTH,
 ) -> EvaluationProblemPipelineResult:
 
     _validate_parameters(
         n_samples=n_samples,
         n_features=n_features,
         test_size=test_size,
+        max_wilson_half_width=max_wilson_half_width,
     )
 
     dataset = create_dataset(
@@ -94,24 +115,21 @@ def run_evaluation_problem_pipeline(
         random_state=random_state,
     )
 
-    model.fit(
-        X_train,
-        y_train,
-    )
-
+    model.fit(X_train, y_train)
     predictions = model.predict(X_test)
 
-    accuracy = float(
-        np.mean(predictions == y_test)
-    )
-
+    accuracy = float(np.mean(predictions == y_test))
     evaluation_sample_count = len(y_test)
 
-    evaluation_standard_error = (
-        _calculate_accuracy_standard_error(
+    wilson_interval_half_width = (
+        calculate_wilson_interval_half_width(
             accuracy=accuracy,
             sample_count=evaluation_sample_count,
         )
+    )
+
+    evaluation_precision_adequate = (
+        wilson_interval_half_width <= max_wilson_half_width
     )
 
     return EvaluationProblemPipelineResult(
@@ -122,6 +140,8 @@ def run_evaluation_problem_pipeline(
         predictions=predictions,
         accuracy=accuracy,
         evaluation_sample_count=evaluation_sample_count,
-        evaluation_standard_error=evaluation_standard_error,
+        wilson_interval_half_width=wilson_interval_half_width,
+        max_wilson_half_width=max_wilson_half_width,
+        evaluation_precision_adequate=evaluation_precision_adequate,
         random_state=random_state,
     )

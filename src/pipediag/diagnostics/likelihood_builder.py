@@ -69,7 +69,14 @@ class LikelihoodModelBuilder:
                 if not observation.hypothesis_true
             ]
 
-            parameters = self.estimator.fit(
+            estimator = self.estimator
+
+            if measurement == "runtime_contamination_rate":
+                estimator = GaussianLikelihoodEstimator(
+                    min_std=0.005
+                )
+
+            parameters = estimator.fit(
                 true_values=true_values,
                 false_values=false_values,
             )

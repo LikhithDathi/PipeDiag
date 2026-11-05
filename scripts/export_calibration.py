@@ -20,7 +20,7 @@ OUTPUT_PATHS = [
     PROJECT_ROOT / "src" / "pipediag" / "calibration" / "likelihood_models.json",
 ]
 
-EXPECTED_MODEL_COUNT = 11
+EXPECTED_MODEL_COUNT = 10
 SCHEMA_VERSION = 1
 
 

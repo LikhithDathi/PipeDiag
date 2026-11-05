@@ -36,6 +36,9 @@ class EvidenceLikelihoodEvaluator:
         if evidence.status == "unavailable":
             return {}
 
+        if evidence.metadata.get("inference_eligible") is False:
+            return {}
+
         self._validate_evidence(evidence)
 
         hypotheses = self._mapped_hypotheses(
@@ -45,8 +48,8 @@ class EvidenceLikelihoodEvaluator:
         likelihoods: dict[str, float] = {}
 
         for hypothesis in hypotheses:
-            model = self.registry.get(
-                evidence.name,
+            model = self._get_likelihood_model(
+                evidence,
                 hypothesis,
             )
 
@@ -80,6 +83,11 @@ class EvidenceLikelihoodEvaluator:
         if evidence.status == "unavailable":
             return {}
 
+
+        if evidence.metadata.get("inference_eligible") is False:
+            return {}
+                
+
         self._validate_evidence(evidence)
 
         hypotheses = self._mapped_hypotheses(
@@ -89,8 +97,8 @@ class EvidenceLikelihoodEvaluator:
         ratios: dict[str, float] = {}
 
         for hypothesis in hypotheses:
-            model = self.registry.get(
-                evidence.name,
+            model = self._get_likelihood_model(
+                evidence,
                 hypothesis,
             )
 
@@ -128,6 +136,9 @@ class EvidenceLikelihoodEvaluator:
         if evidence.status == "unavailable":
             return {}
 
+        if evidence.metadata.get("inference_eligible") is False:
+            return {}
+
         self._validate_evidence(evidence)
 
         hypotheses = self._mapped_hypotheses(
@@ -137,8 +148,8 @@ class EvidenceLikelihoodEvaluator:
         log_ratios: dict[str, float] = {}
 
         for hypothesis in hypotheses:
-            model = self.registry.get(
-                evidence.name,
+            model = self._get_likelihood_model(
+                evidence,
                 hypothesis,
             )
 
@@ -264,4 +275,51 @@ class EvidenceLikelihoodEvaluator:
         return self._get_measurement_value(
             evidence,
             model.measurement,
+        )
+
+
+
+
+
+
+
+
+
+    def _get_likelihood_model(self, evidence, hypothesis):
+        # Preserve the existing default scalar measurement behaviour.
+        if evidence.value is not None:
+            model = self.registry.get(
+                evidence.name,
+                hypothesis,
+                measurement="default",
+            )
+            if model is not None:
+                return model
+
+        # Multivariate models are registered under "multivariate".
+        # Their required measurements are validated when values
+        # are extracted by _get_model_values().
+        model = self.registry.get(
+            evidence.name,
+            hypothesis,
+            measurement="multivariate",
+        )
+        if isinstance(model, MultivariateGaussianLikelihoodModel):
+            return model
+
+        # Check exact named scalar measurements.
+        measurements = evidence.metadata.get("measurements", {})
+
+        for measurement in measurements:
+            model = self.registry.get(
+                evidence.name,
+                hypothesis,
+                measurement=measurement,
+            )
+            if model is not None:
+                return model
+
+        raise ValueError(
+            f"No matching likelihood model for "
+            f"{evidence.name} -> {hypothesis}"
         )

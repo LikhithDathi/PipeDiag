@@ -125,6 +125,7 @@ def instrument_method(
                         evaluation.target_dataset_id
                     ),
                     "source": evaluation.source,
+                    "sample_count": evaluation.sample_count,
                 }
 
             context.end_event(

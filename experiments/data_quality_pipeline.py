@@ -132,10 +132,11 @@ def run_data_quality_pipeline(
         random_state=random_state + 1,
     )
 
-    observed_missing_rate = (
-        _missing_value_rate(X_train)
-        + _missing_value_rate(X_test)
-    ) / 2.0
+    observed_missing_rate = float(
+        np.isnan(
+            np.concatenate([X_train, X_test], axis=0)
+        ).mean()
+    )
 
     imputer = SimpleImputer(strategy="mean")
 

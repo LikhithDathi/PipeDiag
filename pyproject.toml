@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pipediag"
-version = "0.1.1"
+version = "0.1.2"
 description = "An explainable diagnostic framework for scikit-learn machine learning pipelines"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -14,7 +14,6 @@ dependencies = [
 ]
 license = "MIT"
 license-files = ["LICENSE"]
-
 
 [project.optional-dependencies]
 llm = [
@@ -30,7 +29,6 @@ web = [
 where = ["src", "."]
 include = ["pipediag*", "web*"]
 
-
 [tool.setuptools.package-data]
 pipediag = ["calibration/*.json"]
 web = [
@@ -38,10 +36,8 @@ web = [
     "frontend/dist/assets/*"
 ]
 
-
 [project.scripts]
 pipediag = "pipediag.cli:main"
-
 
 [project.urls]
 Homepage = "https://github.com/LikhithDathi/PipeDiag"

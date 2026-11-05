@@ -12,6 +12,10 @@ from pipediag.llm.generator import (
     DeterministicExplanationGenerator,
 )
 
+from pipediag.diagnostics.multi_fault_diagnostic_result import (
+    MultiFaultDiagnosticResult,
+)
+
 class EvidenceProvider(Protocol):
     """
     Protocol for components that acquire diagnostic evidence.
@@ -75,6 +79,7 @@ class DiagnosticRunResult:
     diagnostic_result: DiagnosticResult
     explanation: ExplanationSpec
     report: str
+    multi_fault_result: MultiFaultDiagnosticResult | None = None
 
     def __post_init__(self) -> None:
         if self.diagnostic_result is None:

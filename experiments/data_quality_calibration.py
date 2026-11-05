@@ -1,4 +1,7 @@
+
 from __future__ import annotations
+
+import math
 
 from pipediag.diagnostics.calibration import (
     CalibrationObservation,
@@ -15,156 +18,91 @@ from experiments.data_quality_pipeline import (
 def collect_data_quality_calibration_observations(
     n_samples: int = 500,
     n_features: int = 10,
-    random_states: tuple[int, ...] = (
-        1,
-        2,
-        3,
-        4,
-        5,
-    ),
-    normal_missing_rates: tuple[float, ...] = (
-        0.00,
-        0.01,
-        0.02,
-        0.00,
-        0.01,
-    ),
-    faulty_missing_rates: tuple[float, ...] = (
-        0.10,
-        0.15,
-        0.20,
-        0.25,
-        0.30,
-    ),
+    random_states: tuple[int, ...] = tuple(range(1, 21)),
+    normal_missing_rates: tuple[float, ...] | None = None,
+    faulty_missing_rates: tuple[float, ...] | None = None,
 ) -> list[CalibrationObservation]:
 
     if not random_states:
+        raise ValueError("random_states must not be empty")
+
+    if len(random_states) != len(set(random_states)):
+        raise ValueError("random_states must be unique")
+
+    if normal_missing_rates is None:
+        normal_missing_rates = (
+            0.00, 0.01, 0.02, 0.04, 0.06, 0.08,
+        )
+    elif len(normal_missing_rates) != len(random_states):
         raise ValueError(
-            "random_states must not be empty"
+            "normal_missing_rates length must match random_states"
         )
 
-    if len(normal_missing_rates) != len(
-        random_states
-    ):
+    if faulty_missing_rates is None:
+        faulty_missing_rates = (
+            0.10, 0.12, 0.15, 0.20, 0.25, 0.30,
+        )
+    elif len(faulty_missing_rates) != len(random_states):
         raise ValueError(
-            "normal_missing_rates must have the "
-            "same length as random_states"
+            "faulty_missing_rates length must match random_states"
         )
 
-    if len(faulty_missing_rates) != len(
-        random_states
-    ):
-        raise ValueError(
-            "faulty_missing_rates must have the "
-            "same length as random_states"
-        )
+    for rate in normal_missing_rates:
+        if not math.isfinite(rate) or not 0.0 <= rate < 1.0:
+            raise ValueError("Invalid normal missing rate")
 
-    if any(
-        rate < 0.0
-        for rate in normal_missing_rates
-    ):
-        raise ValueError(
-            "normal_missing_rates must be non-negative"
-        )
+    for rate in faulty_missing_rates:
+        if not math.isfinite(rate) or not 0.0 < rate < 1.0:
+            raise ValueError("Invalid faulty missing rate")
 
-    if any(
-        rate <= 0.0
-        for rate in faulty_missing_rates
-    ):
-        raise ValueError(
-            "faulty_missing_rates must be positive"
-        )
+    observations: list[CalibrationObservation] = []
 
-    observations: list[
-        CalibrationObservation
-    ] = []
+    for random_state in random_states:
 
-    for (
-        random_state,
-        normal_rate,
-        faulty_rate,
-    ) in zip(
-        random_states,
-        normal_missing_rates,
-        faulty_missing_rates,
-    ):
+        # Normal scenarios: H5 is false.
+        for missing_rate in normal_missing_rates:
 
-        # ----------------------------------------------------
-        # Normal / non-H5 scenario
-        # ----------------------------------------------------
-
-        normal_result = run_data_quality_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            missing_rate=normal_rate,
-            random_state=random_state,
-        )
-
-        normal_evidence = (
-            collect_data_quality_evidence(
-                normal_result
+            result = run_data_quality_pipeline(
+                n_samples=n_samples,
+                n_features=n_features,
+                missing_rate=missing_rate,
+                random_state=random_state,
             )
-        )
 
-        # G5 -> H5 primary
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G5",
-                hypothesis="H5",
-                hypothesis_true=False,
-                value=normal_evidence.value,
-                measurement="missing_value_rate",
+            evidence = collect_data_quality_evidence(result)
+
+            for hypothesis in ("H5", "H7"):
+                observations.append(
+                    CalibrationObservation(
+                        evidence_group="G5",
+                        hypothesis=hypothesis,
+                        hypothesis_true=False,
+                        value=evidence.value,
+                        measurement="missing_value_rate",
+                    )
+                )
+
+        # Faulty scenarios: H5 is true.
+        for missing_rate in faulty_missing_rates:
+
+            result = run_data_quality_pipeline(
+                n_samples=n_samples,
+                n_features=n_features,
+                missing_rate=missing_rate,
+                random_state=random_state,
             )
-        )
 
-        # G5 -> H7 secondary
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G5",
-                hypothesis="H7",
-                hypothesis_true=False,
-                value=normal_evidence.value,
-                measurement="missing_value_rate",
-            )
-        )
+            evidence = collect_data_quality_evidence(result)
 
-        # ----------------------------------------------------
-        # Faulty / H5 scenario
-        # ----------------------------------------------------
-
-        faulty_result = run_data_quality_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            missing_rate=faulty_rate,
-            random_state=random_state,
-        )
-
-        faulty_evidence = (
-            collect_data_quality_evidence(
-                faulty_result
-            )
-        )
-
-        # G5 -> H5 primary
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G5",
-                hypothesis="H5",
-                hypothesis_true=True,
-                value=faulty_evidence.value,
-                measurement="missing_value_rate",
-            )
-        )
-
-        # G5 -> H7 secondary
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G5",
-                hypothesis="H7",
-                hypothesis_true=True,
-                value=faulty_evidence.value,
-                measurement="missing_value_rate",
-            )
-        )
+            for hypothesis in ("H5", "H7"):
+                observations.append(
+                    CalibrationObservation(
+                        evidence_group="G5",
+                        hypothesis=hypothesis,
+                        hypothesis_true=True,
+                        value=evidence.value,
+                        measurement="missing_value_rate",
+                    )
+                )
 
     return observations

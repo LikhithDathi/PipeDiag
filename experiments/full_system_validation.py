@@ -11,8 +11,12 @@ from experiments.data_quality_evidence import (
 from experiments.data_quality_pipeline import (
     run_data_quality_pipeline,
 )
+
 from experiments.distribution_shift_calibration import (
     collect_distribution_shift_calibration_observations,
+)
+from experiments.runtime_leakage_calibration import (
+    collect_runtime_leakage_calibration_observations,
 )
 from experiments.distribution_shift_evidence import (
     collect_distribution_shift_evidence,
@@ -332,6 +336,10 @@ def build_calibrated_likelihood_registry():
 
     observations.extend(
         collect_leakage_calibration_observations()
+    )
+
+    observations.extend(
+        collect_runtime_leakage_calibration_observations()
     )
 
     observations.extend(

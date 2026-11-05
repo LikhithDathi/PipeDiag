@@ -12,6 +12,7 @@ DEFAULT_REPORTING_THRESHOLD = 0.20
 class ReportedHypothesis:
     hypothesis_id: str
     posterior: float
+    evidence_supported: bool = False
 
     def __post_init__(self) -> None:
         if not self.hypothesis_id:
@@ -68,6 +69,11 @@ class ThresholdReporter:
             ReportedHypothesis(
                 hypothesis_id=hypothesis_id,
                 posterior=posterior,
+                evidence_supported=(
+                    diagnostic_result.evidence_supported_hypotheses is None
+                    or hypothesis_id
+                    in diagnostic_result.evidence_supported_hypotheses
+                ),
             )
             for hypothesis_id, posterior
             in diagnostic_result.posterior.items()

@@ -27,6 +27,8 @@ class DiagnosticReportRenderer:
             f"**Posterior reporting threshold:** "
             f"{explanation.threshold:.2f}"
         )
+        lines.append("")
+
         lines.append(
             f"**Uncertainty:** "
             f"{explanation.uncertainty:.2f}"
@@ -44,6 +46,13 @@ class DiagnosticReportRenderer:
                     explanation
                 )
             )
+
+            if explanation.hypotheses:
+                lines.extend(
+                    self._render_hypotheses(
+                        explanation
+                    )
+                )
         else:
             lines.extend(
                 self._render_hypotheses(
@@ -70,14 +79,24 @@ class DiagnosticReportRenderer:
         lines.append("## Diagnostic Conclusion")
         lines.append("")
         lines.append(
-            "No hypothesis reached the posterior reporting threshold."
+            "No evidence-supported hypothesis was identified."
         )
         lines.append(
             "The available evidence does not support a dominant "
             "diagnostic explanation."
         )
-        lines.append("")
 
+        if any(
+            not hypothesis.evidence_supported
+            for hypothesis in explanation.hypotheses
+        ):
+            lines.append(
+                "Some hypotheses crossed the posterior reporting "
+                "threshold, but their support is based on prior "
+                "information because no eligible evidence contributed."
+            )
+
+        lines.append("")
         lines.append(
             "The observed evidence should still be reviewed when "
             "investigating the pipeline."
@@ -91,19 +110,49 @@ class DiagnosticReportRenderer:
     ) -> list[str]:
         lines: list[str] = []
 
-        lines.append("## Potential Explanations")
-        lines.append("")
+        supported = [
+            hypothesis
+            for hypothesis in explanation.hypotheses
+            if hypothesis.evidence_supported
+        ]
 
-        for index, hypothesis in enumerate(
-            explanation.hypotheses,
-            start=1,
-        ):
-            lines.extend(
-                self._render_hypothesis(
-                    index=index,
-                    hypothesis=hypothesis,
+        prior_only = [
+            hypothesis
+            for hypothesis in explanation.hypotheses
+            if not hypothesis.evidence_supported
+        ]
+
+        if supported:
+            lines.append("## Potential Explanations")
+            lines.append("")
+
+            for index, hypothesis in enumerate(
+                supported,
+                start=1,
+            ):
+                lines.extend(
+                    self._render_hypothesis(
+                        index=index,
+                        hypothesis=hypothesis,
+                    )
                 )
+
+        if prior_only:
+            lines.append(
+                "## Prior-only Hypotheses (Insufficient Evidence)"
             )
+            lines.append("")
+
+            for index, hypothesis in enumerate(
+                prior_only,
+                start=1,
+            ):
+                lines.extend(
+                    self._render_hypothesis(
+                        index=index,
+                        hypothesis=hypothesis,
+                    )
+                )
 
         return lines
 

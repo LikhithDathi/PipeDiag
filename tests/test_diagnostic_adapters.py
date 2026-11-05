@@ -185,6 +185,11 @@ def test_generalization_is_converted_to_common_evidence():
     assert result.measurements["test_value"] == 0.82
     assert result.measurements["gap"] == 0.13
 
+    # Calibrated G2 measurement aliases.
+    assert result.measurements["generalization_gap"] == 0.13
+    assert result.measurements["training_accuracy"] == 0.95
+    assert result.measurements["evaluation_accuracy"] == 0.82
+
     assert (
         result.measurements["metric_direction"]
         == "HIGHER_IS_BETTER"

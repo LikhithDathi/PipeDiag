@@ -61,6 +61,14 @@ class DiagnosticEngine:
                     evidence.name
                 ] = log_ratios
 
+
+        evidence_supported_hypotheses = frozenset(
+            hypothesis_id
+            for log_ratios in evidence_log_ratios.values()
+            for hypothesis_id in log_ratios
+        )
+        
+
         posterior = (
             self.bayesian_evidence_inference
             .infer_with_log_likelihood_ratios(
@@ -77,4 +85,7 @@ class DiagnosticEngine:
             uncertainty=uncertainty,
             evidence=evidence_groups,
             metadata=metadata or {},
+            evidence_supported_hypotheses=(
+                evidence_supported_hypotheses
+            ),
         )

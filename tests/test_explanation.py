@@ -481,3 +481,84 @@ def test_calibrated_builder_exposes_calibrator():
     )
 
     assert builder.interpretation_calibrator is calibrator
+
+def test_inference_ineligible_runtime_g1_is_skipped_by_explanation():
+    posterior = {
+        "H1": 0.80,
+        "H2": 0.02,
+        "H3": 0.02,
+        "H4": 0.02,
+        "H5": 0.02,
+        "H6": 0.02,
+        "H7": 0.04,
+        "H8": 0.03,
+        "H9": 0.03,
+    }
+
+    evidence = EvidenceGroup(
+        name="G1",
+        value="CONFIRMED_LEAKAGE",
+        status="observed",
+        metadata={
+            "inference_eligible": False,
+            "findings": [
+                {
+                    "status": "CONFIRMED_LEAKAGE",
+                    "reason": "Test leakage finding",
+                }
+            ],
+        },
+    )
+
+    builder = ExplanationBuilder()
+
+    result = builder.build(
+        _result(
+            posterior=posterior,
+            evidence=[evidence],
+        )
+    )
+
+    hypothesis = result.hypotheses[0]
+
+    assert hypothesis.hypothesis_id == "H1"
+    assert hypothesis.evidence == ()
+
+
+
+
+
+
+
+def test_prior_only_hypothesis_does_not_claim_diagnostic_issue():
+    builder = ExplanationBuilder()
+
+    diagnostic_result = DiagnosticResult(
+        posterior={
+            "H1": 0.84,
+            "H2": 0.02,
+            "H3": 0.02,
+            "H4": 0.02,
+            "H5": 0.02,
+            "H6": 0.02,
+            "H7": 0.02,
+            "H8": 0.02,
+            "H9": 0.02,
+        },
+        uncertainty=0.25,
+        evidence=[],
+        evidence_supported_hypotheses=frozenset(),
+    )
+
+    explanation = builder.build(diagnostic_result)
+
+    assert len(explanation.hypotheses) == 1
+    assert explanation.hypotheses[0].hypothesis_id == "H1"
+    assert explanation.hypotheses[0].evidence_supported is False
+
+    assert "No evidence-supported diagnostic issue identified" in (
+        explanation.overall_assessment
+    )
+    assert "Potential diagnostic issue(s) identified" not in (
+        explanation.overall_assessment
+    )

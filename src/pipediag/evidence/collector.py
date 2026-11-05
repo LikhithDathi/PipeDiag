@@ -130,6 +130,13 @@ class EvidenceCollector:
                 )
             )
 
+
+        for reference in references:
+            self._propagate_lineage_context(
+                reference.dataset_id
+            )
+            
+
         return {
             "inputs": references,
             "outputs": [],

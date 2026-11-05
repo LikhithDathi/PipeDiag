@@ -224,6 +224,35 @@ def _serialize_result(
             "metadata": metadata,
         })
 
+
+
+    multi_fault = None
+
+    if result.multi_fault_result is not None:
+        mf = result.multi_fault_result
+
+        multi_fault = {
+            "posterior": dict(mf.posterior),
+            "independent_posterior": dict(
+                mf.independent_posterior
+            ),
+            "detected_hypotheses": sorted(
+                mf.detected_hypotheses
+            ),
+            "evidence_supported_hypotheses": sorted(
+                mf.evidence_supported_hypotheses
+            ),
+            "uncertainty": mf.uncertainty,
+            "uncertainty_by_hypothesis": dict(
+                mf.uncertainty_by_hypothesis
+            ),
+            "detection_threshold": mf.detection_threshold,
+            "evidence_log_likelihood_ratios": (
+                mf.evidence_log_likelihood_ratios
+            ),
+            "metadata": mf.metadata,
+        }
+
     return {
         "run_id": run_id,
         "saved_at": datetime.now(timezone.utc).isoformat(),
@@ -231,6 +260,7 @@ def _serialize_result(
             "posterior": dict(diagnostic.posterior),
             "uncertainty": diagnostic.uncertainty,
             "metadata": _json_value(dict(diagnostic.metadata)),
+             "multi_fault": _json_value(multi_fault),
         },
         "explanation": {
             "threshold": explanation.threshold,
@@ -253,6 +283,7 @@ def _serialize_result(
         "evaluations": evaluations,
         "evidence": evidence,
         "run_type": run_type,
+        "multi_fault": multi_fault,
     }
 
 

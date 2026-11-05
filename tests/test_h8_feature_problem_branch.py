@@ -386,22 +386,14 @@ def test_calibration_uses_g7_h8():
     )
 
 
-def test_calibration_uses_g7_h7_secondary_relationship():
+def test_g7_calibration_does_not_support_h7():
     observations = (
         collect_feature_problem_calibration_observations()
     )
 
-    h7_observations = [
-        observation
-        for observation in observations
-        if observation.hypothesis == "H7"
-    ]
-
-    assert h7_observations
-
     assert all(
-        observation.evidence_group == "G7"
-        for observation in h7_observations
+        observation.hypothesis == "H8"
+        for observation in observations
     )
 
 
@@ -495,22 +487,7 @@ def test_g7_h8_likelihood_model_is_registered():
     )
 
 
-def test_g7_h7_likelihood_model_is_registered():
-    observations = (
-        collect_feature_problem_calibration_observations()
-    )
 
-    registry = LikelihoodModelBuilder().build(
-        observations
-    )
-
-    model = registry.get("G7", "H7")
-
-    assert model is not None
-
-    assert model.measurement == (
-        "constant_feature_ratio"
-    )
 
 
 def test_h8_model_separates_true_and_false_samples():
@@ -527,18 +504,6 @@ def test_h8_model_separates_true_and_false_samples():
     assert model.mean_true > model.mean_false
 
 
-def test_h7_secondary_model_separates_true_and_false_samples():
-    observations = (
-        collect_feature_problem_calibration_observations()
-    )
-
-    registry = LikelihoodModelBuilder().build(
-        observations
-    )
-
-    model = registry.get("G7", "H7")
-
-    assert model.mean_true > model.mean_false
 
 
 # ============================================================

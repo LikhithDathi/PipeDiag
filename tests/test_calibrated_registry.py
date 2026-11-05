@@ -21,17 +21,16 @@ def test_load_calibrated_registry():
 
     assert len(models) == 11
 
-    assert ("G1", "H1") in models
-    assert ("G2", "H2") in models
-    assert ("G2", "H7") in models
-    assert ("G3", "H3") in models
-    assert ("G4", "H4") in models
-    assert ("G5", "H5") in models
-    assert ("G5", "H7") in models
-    assert ("G6", "H6") in models
-    assert ("G7", "H7") in models
-    assert ("G7", "H8") in models
-    assert ("G8", "H9") in models
+    assert ("G1", "H1", "default") in models
+    assert ("G2", "H2", "generalization_gap") in models
+    assert ("G2", "H7", "training_accuracy") in models
+    assert ("G3", "H3", "mean_absolute_standardized_shift") in models
+    assert ("G4", "H4", "minority_class_proportion") in models
+    assert ("G5", "H5", "missing_value_rate") in models
+    assert ("G5", "H7", "missing_value_rate") in models
+    assert ("G6", "H6", "log_wilson_interval_half_width") in models
+    assert ("G7", "H8", "constant_feature_ratio") in models
+    assert ("G8", "H9", "execution_failure_rate") in models
 
 
 import pytest

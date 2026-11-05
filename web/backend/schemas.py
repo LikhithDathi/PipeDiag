@@ -64,12 +64,14 @@ class HypothesisResponse(BaseModel):
     evidence: list[EvidenceResponse]
     explanation_points: list[str]
     recommendation: str
+    evidence_supported: bool = True
 
 
 class DiagnosticResponse(BaseModel):
     posterior: dict[str, float]
     uncertainty: float = Field(ge=0.0, le=1.0)
     metadata: dict[str, Any]
+    multi_fault: MultiFaultDiagnosticResponse | None = None
 
 
 class ExplanationResponse(BaseModel):
@@ -97,3 +99,21 @@ class DiagnosticRunResponse(BaseModel):
         default_factory=list
     )
     run_type: str = "diagnostic"
+
+
+
+
+
+
+class MultiFaultDiagnosticResponse(BaseModel):
+    posterior: dict[str, float]
+    independent_posterior: dict[str, float]
+    detected_hypotheses: list[str]
+    evidence_supported_hypotheses: list[str]
+    uncertainty: float
+    uncertainty_by_hypothesis: dict[str, float]
+    detection_threshold: float
+    evidence_log_likelihood_ratios: dict[
+        str, dict[str, float]
+    ] = {}
+    metadata: dict[str, Any] = {}

@@ -49,6 +49,8 @@ class HypothesisExplanation:
     evidence: tuple[EvidenceExplanation, ...]
     explanation_points: tuple[str, ...]
     recommendation: str
+    evidence_supported: bool = True
+    
 
     def __post_init__(self) -> None:
         if not self.hypothesis_id:
@@ -86,7 +88,10 @@ class ExplanationSpec:
 
     @property
     def is_inconclusive(self) -> bool:
-        return not self.hypotheses
+        return not any(
+            hypothesis.evidence_supported
+            for hypothesis in self.hypotheses
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -194,15 +199,29 @@ class ExplanationBuilder:
                 hypothesis.hypothesis_id,
                 hypothesis.posterior,
                 diagnostic_result,
+                evidence_supported=hypothesis.evidence_supported,
             )
             for hypothesis in report.reported_hypotheses
         )
 
-        if hypotheses:
+        supported_hypotheses = tuple(
+            hypothesis
+            for hypothesis in hypotheses
+            if hypothesis.evidence_supported
+        )
+
+        if supported_hypotheses:
             overall_assessment = (
                 "Potential diagnostic issue(s) identified. "
-                "The reported hypotheses reached the posterior "
-                "reporting threshold."
+                "One or more hypotheses reached the posterior "
+                "reporting threshold with eligible supporting evidence."
+            )
+        elif hypotheses:
+            overall_assessment = (
+                "No evidence-supported diagnostic issue identified. "
+                "Some hypotheses crossed the posterior reporting "
+                "threshold, but their support is based on prior "
+                "information because no eligible evidence contributed."
             )
         else:
             overall_assessment = (
@@ -220,8 +239,9 @@ class ExplanationBuilder:
     def _build_hypothesis_explanation(
         self,
         hypothesis_id: str,
-        posterior: float,
+        posterior: float,        
         diagnostic_result: DiagnosticResult,
+        evidence_supported: bool = True,        
     ) -> HypothesisExplanation:
         if hypothesis_id not in HYPOTHESIS_TITLES:
             raise ValueError(
@@ -236,6 +256,7 @@ class ExplanationBuilder:
         explanation_points = self._build_explanation_points(
             hypothesis_id=hypothesis_id,
             posterior=posterior,
+            evidence_supported=evidence_supported,
             evidence=evidence,
         )
 
@@ -246,6 +267,7 @@ class ExplanationBuilder:
             evidence=evidence,
             explanation_points=explanation_points,
             recommendation=HYPOTHESIS_RECOMMENDATIONS[hypothesis_id],
+            evidence_supported=evidence_supported,
         )
 
     def _build_evidence_explanations(
@@ -355,11 +377,70 @@ class ExplanationBuilder:
     # -----------------------------------------------------------------------
 
     def _explain_g1(self, evidence_group) -> list[EvidenceExplanation]:
+
+        if evidence_group.metadata.get("inference_eligible") is False:
+            return []
+
+        measurements = evidence_group.metadata.get(
+            "measurements",
+            {},
+        )
+
+        # Runtime train/test contamination measurement.
+        if "runtime_contamination_rate" in measurements:
+            metric = "runtime_contamination_rate"
+            value = self._measurement_value(
+                measurements[metric]
+            )
+
+            strength = self._interpret(
+                evidence_group="G1",
+                hypothesis_id="H1",
+                measurement=metric,
+                value=value,
+                fallback={
+                    "substantial": lambda x: x >= 0.50,
+                    "observable": lambda x: x > 0.0,
+                },
+            )
+
+            interpretations = {
+                "substantial": (
+                    "Runtime evidence shows substantial train/test "
+                    "contamination during state-learning operations."
+                ),
+                "observable": (
+                    "Runtime evidence confirms train/test contamination "
+                    "during at least one state-learning operation."
+                ),
+                "limited": (
+                    "No runtime train/test contamination was measured."
+                ),
+            }
+
+            return [
+                EvidenceExplanation(
+                    evidence_group="G1",
+                    metric=metric,
+                    value=value,
+                    interpretation=interpretations[strength],
+                )
+            ]
+
+        # Preserve the existing feature-target correlation behaviour.
         metric = self._metric_name(
             evidence_group,
             default="leakage_signal",
         )
-        value = float(evidence_group.value)
+
+        if evidence_group.value is not None:
+            value = float(evidence_group.value)
+        elif metric in measurements:
+            value = self._measurement_value(
+                measurements[metric]
+            )
+        else:
+            return []
 
         strength = self._interpret(
             evidence_group="G1",
@@ -392,6 +473,10 @@ class ExplanationBuilder:
                 interpretation=interpretations[strength],
             )
         ]
+
+
+
+    
 
     def _explain_g2(
         self,
@@ -585,11 +670,25 @@ class ExplanationBuilder:
         ]
 
     def _explain_g5(self, evidence_group) -> list[EvidenceExplanation]:
-        value = float(evidence_group.value)
         metric = self._metric_name(
             evidence_group,
             default="missing_value_rate",
         )
+
+        if evidence_group.value is None:
+            return [
+                EvidenceExplanation(
+                    evidence_group="G5",
+                    metric=metric,
+                    value=0.0,
+                    interpretation=(
+                        "Missing-value rate could not be measured because "
+                        "sufficient data-quality evidence was unavailable."
+                    ),
+                )
+            ]
+
+        value = float(evidence_group.value)
 
         strength = self._interpret(
             evidence_group="G5",
@@ -629,8 +728,9 @@ class ExplanationBuilder:
         value = float(evidence_group.value)
         metric = self._metric_name(
             evidence_group,
-            default="evaluation_standard_error",
+            default="wilson_interval_half_width",
         )
+
 
         strength = self._interpret(
             evidence_group="G6",
@@ -638,23 +738,26 @@ class ExplanationBuilder:
             measurement=metric,
             value=value,
             fallback={
-                "substantial": lambda x: x >= 0.20,
-                "observable": lambda x: x >= 0.10,
+                "substantial": lambda x: x > 0.15,
+                "observable": lambda x: x > 0.05,
             },
         )
 
         interpretations = {
             "substantial": (
-                "The evaluation estimate has high statistical uncertainty."
+                "The Wilson confidence interval is wide, indicating "
+                "substantial uncertainty in the evaluation estimate."
             ),
             "observable": (
-                "The evaluation estimate has noticeable statistical uncertainty."
+                "The Wilson confidence interval exceeds the configured "
+                "precision threshold."
             ),
             "limited": (
-                "The evaluation estimate has relatively limited statistical "
-                "uncertainty."
+                "The Wilson confidence interval is within the configured "
+                "precision threshold."
             ),
         }
+
 
         return [
             EvidenceExplanation(
@@ -753,17 +856,26 @@ class ExplanationBuilder:
         *,
         hypothesis_id: str,
         posterior: float,
+        evidence_supported: bool = True,
         evidence: tuple[EvidenceExplanation, ...],
     ) -> tuple[str, ...]:
         points: list[str] = []
 
         title = HYPOTHESIS_TITLES[hypothesis_id]
 
-        points.append(
-            f"{title} is a potential explanation for the observed "
-            f"pipeline behavior, with posterior support of "
-            f"{posterior:.2f}."
-        )
+        if evidence_supported:
+            points.append(
+                f"{title} is a potential explanation for the observed "
+                f"pipeline behavior, with posterior support of "
+                f"{posterior:.2f}."
+            )
+        else:
+            points.append(
+                f"{title} has posterior probability {posterior:.2f}, "
+                "but this probability is based on prior information "
+                "because no eligible evidence contributed to this "
+                "hypothesis."
+            )
 
         if evidence:
             points.append(

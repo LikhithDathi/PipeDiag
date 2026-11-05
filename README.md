@@ -80,13 +80,13 @@ python -m pip install "pipediag[web,llm]"
 
 The `llm` extra installs Ollama-related support. The `web` extra installs FastAPI and Uvicorn. These extras are optional and are not part of the base dependency set.
 
-### Instgit clone https://github.com/LikhithDathi/PipeDiag.git
-cd PipeDiag
-repository and install the package:
+### Install from source
+
+Clone the repository and install the package:
 
 ```bash
-git clone <REPOSITORY_URL>
-cd pipediag
+git clone https://github.com/LikhithDathi/PipeDiag.git
+cd PipeDiag
 python -m pip install .
 ```
 
@@ -101,7 +101,7 @@ python -m pip install -e .
 If you have downloaded or built a wheel, install it with:
 
 ```bash
-python -m pip install pipediag-0.1.0-py3-none-any.whl
+python -m pip install pipediag-0.1.2-py3-none-any.whl
 ```
 
 Replace the filename with the wheel you have.
@@ -381,6 +381,7 @@ The generated artifacts are stored at:
 
 ```text
 artifacts/calibration/likelihood_models.json
+
 src/pipediag/calibration/likelihood_models.json
 ```
 

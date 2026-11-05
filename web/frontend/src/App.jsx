@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -224,8 +223,6 @@ function App() {
       .catch(() => setHealth("offline"));
   }, []);
 
-
-
   useEffect(() => {
     let cancelled = false;
 
@@ -245,7 +242,6 @@ function App() {
     };
   }, [refreshHistory]);
 
-
   const diagnostic = result?.diagnostic ?? {};
   const explanation = result?.explanation ?? {};
   const runtime = result?.runtime_summary ?? {};
@@ -254,9 +250,25 @@ function App() {
   const evidence = result?.evidence ?? [];
   const threshold = Number(explanation.threshold ?? 0.2);
 
-  const hypotheses = useMemo(() => {
-    const posterior = diagnostic.posterior ?? {};
+  // Detect whether this is a multi-fault diagnostic run.
+  const multiFault = diagnostic.multi_fault ?? null;
+  const isMultiFault = Boolean(multiFault);
 
+  // Select the correct posterior distribution.
+  // Multi-fault: normalized multi-fault support.
+  // Single-fault: original categorical posterior.
+  const posterior = isMultiFault
+    ? multiFault.posterior ?? {}
+    : diagnostic.posterior ?? {};
+
+  // Multi-fault detection is independent of normalized support.
+  const detectedHypotheses =
+    multiFault?.detected_hypotheses ?? [];
+
+  const evidenceSupportedHypotheses =
+    multiFault?.evidence_supported_hypotheses ?? [];
+
+  const hypotheses = useMemo(() => {
     return Object.entries(posterior)
       .map(([id, value]) => {
         const detail = (explanation.hypotheses ?? []).find(
@@ -266,18 +278,51 @@ function App() {
         return {
           id,
           title: detail?.title ?? id,
+
+          // This is the value displayed in the dashboard.
           value: Number(value),
+
+          // Detection must NOT use the normalized percentage.
+          detected: isMultiFault
+            ? detectedHypotheses.includes(id)
+            : Number(value) >= threshold,
+
           evidence: detail?.evidence ?? [],
+
+          evidenceSupported: isMultiFault
+            ? evidenceSupportedHypotheses.includes(id)
+            : detail?.evidence_supported ?? false,
+
           points: detail?.explanation_points ?? [],
           recommendation: detail?.recommendation ?? "",
           detail: Boolean(detail),
         };
       })
       .sort((a, b) => b.value - a.value);
-  }, [diagnostic.posterior, explanation.hypotheses]);
+  }, [
+    posterior,
+    explanation.hypotheses,
+    isMultiFault,
+    detectedHypotheses,
+    evidenceSupportedHypotheses,
+    threshold,
+  ]);
 
-  const qualifying = hypotheses.filter((h) => h.value >= threshold);
-  const inconclusive = Boolean(explanation.inconclusive);
+  const qualifying = hypotheses.filter(
+    (hypothesis) => hypothesis.detected
+  );
+
+  const supportedFindings = qualifying.filter(
+    (h) => h.evidenceSupported
+  );
+
+  const priorOnlyHypotheses = qualifying.filter(
+    (h) => !h.evidenceSupported
+  );
+
+  const inconclusive = isMultiFault
+    ? qualifying.length === 0
+    : Boolean(explanation.inconclusive);
 
   const failed = Number(
     runtime.failed_events ??
@@ -401,33 +446,10 @@ function App() {
                 value={runId}
                 onChange={(e) => setRunId(e.target.value)}
               />
-
               <button type="submit" disabled={loading}>
                 Open run
               </button>
             </form>
-
-            <button
-              className="button button-quiet"
-              onClick={() => load(`${API}/demo`, {}, "Demo")}
-              disabled={loading}
-            >
-              Demo
-            </button>
-
-            <button
-              className="button button-primary"
-              onClick={() =>
-                load(
-                  `${API}/example-run`,
-                  { method: "POST" },
-                  "Example pipeline"
-                )
-              }
-              disabled={loading || health !== "online"}
-            >
-              {loading ? "Running…" : "Run example"}
-            </button>
           </div>
         </header>
 
@@ -464,23 +486,11 @@ function App() {
             <div className="empty-mark">P</div>
             <h2>Your diagnostic workspace</h2>
             <p>
-              Run the instrumented example pipeline or load a demo
-              to inspect execution, evidence and diagnostic findings.
+              <p>
+                Open a saved diagnostic run using its run ID or select one
+                from Run History to inspect execution, evidence and findings.
+              </p>
             </p>
-
-            <button
-              className="button button-primary"
-              onClick={() =>
-                load(
-                  `${API}/example-run`,
-                  { method: "POST" },
-                  "Example pipeline"
-                )
-              }
-              disabled={loading || health !== "online"}
-            >
-              {loading ? "Running pipeline…" : "Run example pipeline"}
-            </button>
           </section>
         )}
 
@@ -513,7 +523,10 @@ function App() {
                 result={result}
                 hypotheses={hypotheses}
                 qualifying={qualifying}
+                supportedFindings={supportedFindings}
+                priorOnlyHypotheses={priorOnlyHypotheses}
                 threshold={threshold}
+                isMultiFault={isMultiFault}
                 inconclusive={inconclusive}
                 events={events}
                 evaluations={evaluations}
@@ -535,6 +548,7 @@ function App() {
                 hypotheses={hypotheses}
                 qualifying={qualifying}
                 threshold={threshold}
+                isMultiFault={isMultiFault}
                 explanation={explanation}
               />
             )}
@@ -718,7 +732,10 @@ function Overview(props) {
     result,
     hypotheses,
     qualifying,
+    supportedFindings,
+    priorOnlyHypotheses,
     threshold,
+    isMultiFault,
     inconclusive,
     events,
     evaluations,
@@ -734,7 +751,7 @@ function Overview(props) {
     go,
   } = props;
 
-  const top = qualifying;
+  const top = supportedFindings;
   const leading = hypotheses[0];
 
   return (
@@ -878,7 +895,7 @@ function Overview(props) {
                   <div className="signal-track">
                     <span
                       className={`signal-fill ${
-                        h.value >= threshold
+                        h.detected
                           ? "signal-qualified"
                           : "signal-muted"
                       }`}
@@ -890,20 +907,22 @@ function Overview(props) {
                       }}
                     />
 
-                    <i
-                      className="threshold-marker"
-                      style={{
-                        left: `${Math.max(
-                          0,
-                          Math.min(100, threshold * 100)
-                        )}%`,
-                      }}
-                    />
+                    {!isMultiFault && (
+                      <i
+                        className="threshold-marker"
+                        style={{
+                          left: `${Math.max(
+                            0,
+                            Math.min(100, threshold * 100)
+                          )}%`,
+                        }}
+                      />
+                    )}
                   </div>
 
                   <b
                     className={
-                      h.value >= threshold
+                      h.detected
                         ? "signal-value qualified-value"
                         : "signal-value"
                     }
@@ -916,15 +935,20 @@ function Overview(props) {
 
             <div className="signal-legend">
               <span>
-                <i className="legend-green" /> At / above threshold
+                <i className="legend-green" />
+                {isMultiFault ? "Detected" : "At / above threshold"}
               </span>
+
               <span>
-                <i className="legend-grey" /> Below threshold
+                <i className="legend-grey" />
+                {isMultiFault ? "Not detected" : "Below threshold"}
               </span>
-              <span>
-                <i className="legend-amber" /> Threshold ·{" "}
-                {pct(threshold)}
-              </span>
+
+              {!isMultiFault && (
+                <span>
+                  <i className="legend-amber" /> Threshold · {pct(threshold)}
+                </span>
+              )}
             </div>
           </div>
         ) : (
@@ -1055,7 +1079,7 @@ function Overview(props) {
         <div className="panel-title">
           <div>
             <div className="section-kicker">DIAGNOSTIC FINDINGS</div>
-            <h3>Hypotheses meeting the threshold</h3>
+            <h3>Evidence-supported findings</h3>
             <p>
               Posterior support at or above {pct(threshold)}. These
               are not confirmed root causes.
@@ -1112,6 +1136,34 @@ function Overview(props) {
           </div>
         )}
 
+        {priorOnlyHypotheses.length > 0 && (
+          <div className="prior-only-section">
+            <h4>Prior-only hypotheses</h4>
+            <p>
+              These hypotheses crossed the probability threshold but have
+              no eligible supporting evidence in this run.
+            </p>
+
+            {priorOnlyHypotheses.map((h) => (
+              <div className="hypothesis-bar-row" key={h.id}>
+                <div className="hypothesis-bar-label">
+                  <b>{h.title}</b>
+                  <span>{h.id} · Prior-only</span>
+                </div>
+
+                <div className="bar-rail">
+                  <span
+                    className="prior-only-bar"
+                    style={{ width: `${Math.min(100, h.value * 100)}%` }}
+                  />
+                </div>
+
+                <strong>{pct(h.value)}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           className="expand-hypotheses"
           onClick={() => setShowAll(!showAll)}
@@ -1145,9 +1197,11 @@ function Overview(props) {
                 <b>{pct(h.value)}</b>
 
                 <small>
-                  {h.value >= threshold
-                    ? "At / above threshold"
-                    : "Below threshold"}
+                  {h.evidenceSupported
+                    ? "Evidence-supported · above threshold"
+                    : h.value >= threshold
+                      ? "Prior-only · insufficient evidence"
+                      : "Below threshold"}
                 </small>
               </div>
             ))}
@@ -1223,7 +1277,13 @@ function Overview(props) {
    FINDINGS
    ============================================================ */
 
-function Findings({ hypotheses, qualifying, threshold, explanation }) {
+function Findings({
+  hypotheses,
+  qualifying,
+  threshold,
+  isMultiFault,
+  explanation,
+}) {
   const [showAll, setShowAll] = useState(false);
   const [selected, setSelected] = useState(null);
 
@@ -1237,8 +1297,9 @@ function Findings({ hypotheses, qualifying, threshold, explanation }) {
           <div className="section-kicker">POSTERIOR DISTRIBUTION</div>
           <h2>Diagnostic hypotheses</h2>
           <p>
-            Threshold: {pct(threshold)}. Posterior support does not
-            establish causality.
+            {isMultiFault
+              ? "Normalized support distribution. Detection is based on independent hypothesis probabilities."
+              : `Threshold: ${pct(threshold)}. Posterior support does not establish causality.`}
           </p>
         </div>
 
@@ -1274,9 +1335,13 @@ function Findings({ hypotheses, qualifying, threshold, explanation }) {
                 <span className="finding-name">
                   <b>{h.title}</b>
                   <small>
-                    {h.value >= threshold
-                      ? "At / above threshold"
-                      : "Below threshold"}
+                    {isMultiFault
+                      ? h.detected
+                        ? "Detected"
+                        : "Not detected"
+                      : h.detected
+                        ? "At / above threshold"
+                        : "Below threshold"}
                   </small>
                 </span>
 
@@ -1399,9 +1464,46 @@ function EvidenceView({ evidence, hypotheses }) {
               {Object.keys(item.measurements ?? {}).length ? (
                 <dl>
                   {Object.entries(item.measurements).map(([k, v]) => (
-                    <div key={k}>
+                    <div
+                      className={`measurement-row ${
+                        k === "feature_shifts" ? "measurement-wide" : ""
+                      }`}
+                      key={k}
+                    >
                       <dt>{titleCase(k)}</dt>
-                      <dd>{pretty(v)}</dd>
+                      <dd>
+                        {k === "feature_shifts" && v && typeof v === "object" ? (
+                          <details className="feature-shifts">
+                            <summary>
+                              View {Object.keys(v).length} feature measurements
+                            </summary>
+                            <div className="feature-shift-table">
+                              <table className="data-table">
+                                <thead>
+                                  <tr>
+                                    <th>Feature</th>
+                                    <th>Shift</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {Object.entries(v).map(([feature, shift]) => (
+                                    <tr key={feature}>
+                                      <td>{feature}</td>
+                                      <td>{Number(shift).toFixed(6)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </details>
+                        ) : typeof v === "object" && v !== null ? (
+                          <pre className="measurement-json">
+                            {JSON.stringify(v, null, 2)}
+                          </pre>
+                        ) : (
+                          pretty(v)
+                        )}
+                      </dd>
                     </div>
                   ))}
                 </dl>
@@ -1562,6 +1664,30 @@ function RuntimeView({ events, runtime }) {
    EVALUATIONS
    ============================================================ */
 
+const metricDescriptions = {
+  accuracy:
+    "Percentage of examples for which the model predicted the correct target label.",
+  precision:
+    "Of the examples predicted as positive, the percentage that were actually positive.",
+  recall:
+    "Of the actual positive examples, the percentage the model correctly identified.",
+  f1:
+    "Harmonic mean of precision and recall. Balances the two measures.",
+};
+
+const formatMetric = (name, value) => {
+  const numeric = Number(value);
+
+  if (
+    name?.toLowerCase() === "accuracy" &&
+    Number.isFinite(numeric)
+  ) {
+    return `${(numeric * 100).toFixed(2)}%`;
+  }
+
+  return pretty(value);
+};
+
 function EvaluationView({ evaluations }) {
   return (
     <section className="surface page-surface">
@@ -1618,12 +1744,23 @@ function EvaluationView({ evaluations }) {
 
       {evaluations.map((e, i) => (
         <article className="evaluation-detail" key={i}>
-          <b>{e.metric_name ?? "Evaluation"}</b>
-          <span>{pretty(e.metric_value)}</span>
-          <p>
-            Feature dataset: {e.feature_dataset_id ?? "—"} · Target
-            dataset: {e.target_dataset_id ?? "—"}
-          </p>
+          <div className="evaluation-info">
+            <b>{titleCase(e.metric_name)}</b>
+            <p>
+              {metricDescriptions[e.metric_name?.toLowerCase()] ??
+                "Recorded model evaluation metric."}
+            </p>
+            <span>
+              Evaluation split: {titleCase(e.evaluation_context ?? "Unknown")}
+            </span>
+            <span>
+              Recorded by: {titleCase(e.source ?? "Unknown")}
+            </span>
+          </div>
+
+          <strong className="evaluation-value">
+            {formatMetric(e.metric_name, e.metric_value)}
+          </strong>
         </article>
       ))}
     </section>

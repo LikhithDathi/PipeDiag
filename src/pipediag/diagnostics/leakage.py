@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -52,15 +53,10 @@ class LeakageEvidence:
     """
 
     evidence_type: str = "leakage"
-
     leakage_type: str = ""
-
     status: str = INSUFFICIENT_EVIDENCE
-
     rule: str = ""
-
     event_id: str | None = None
-
     operation: str | None = None
 
     input_dataset_ids: list[str] = field(
@@ -126,7 +122,6 @@ class LeakageDiagnostic:
         results: list[LeakageEvidence] = []
 
         for event in events:
-
             results.append(
                 self._analyze_train_test_contamination(
                     event=event,
@@ -155,32 +150,15 @@ class LeakageDiagnostic:
     ) -> LeakageEvidence:
 
         input_ids = list(
-            getattr(
-                event,
-                "input_dataset_refs",
-                [],
-            )
+            getattr(event, "input_dataset_refs", [])
         )
 
         output_ids = list(
-            getattr(
-                event,
-                "output_dataset_refs",
-                [],
-            )
+            getattr(event, "output_dataset_refs", [])
         )
 
-        event_id = getattr(
-            event,
-            "event_id",
-            None,
-        )
-
-        operation = getattr(
-            event,
-            "operation",
-            None,
-        )
+        event_id = getattr(event, "event_id", None)
+        operation = getattr(event, "operation", None)
 
         base = LeakageEvidence(
             leakage_type=TRAIN_TEST_CONTAMINATION,
@@ -195,26 +173,15 @@ class LeakageDiagnostic:
             ),
         )
 
-        # Only fit and fit_transform learn state.
-        #
-        # transform(), predict(), score(), etc. do not
-        # constitute contamination merely because they
-        # receive TEST data.
         if operation not in self.STATE_LEARNING_OPERATIONS:
-
             base.status = NO_EVIDENCE
-
             base.reason = (
                 "The operation does not learn model or "
                 "transformer state, so TEST data participation "
                 "does not constitute train/test contamination."
             )
-
             return base
 
-        # We only care about feature datasets here.
-        # A target dataset is handled separately by the
-        # target-to-feature dependency diagnostic.
         relevant_ids = [
             dataset_id
             for dataset_id in input_ids
@@ -225,14 +192,11 @@ class LeakageDiagnostic:
         ]
 
         if not relevant_ids:
-
             base.status = INSUFFICIENT_EVIDENCE
-
             base.reason = (
                 "No feature dataset involved in the "
                 "state-learning operation could be identified."
             )
-
             return base
 
         contexts = {
@@ -249,18 +213,14 @@ class LeakageDiagnostic:
         ]
 
         if unknown_ids:
-
             base.status = INSUFFICIENT_EVIDENCE
-
             base.violating_dataset_ids = []
-
             base.reason = (
                 "The context of one or more feature datasets "
                 "participating in the state-learning operation "
                 "is UNKNOWN, so train/test contamination cannot "
                 "be determined reliably."
             )
-
             return base
 
         test_ids = [
@@ -270,26 +230,16 @@ class LeakageDiagnostic:
         ]
 
         if test_ids:
-
             base.status = CONFIRMED_LEAKAGE
-
             base.violating_dataset_ids = test_ids
-
             base.reason = (
                 "TEST data participated in a state-learning "
                 "operation. Information from TEST data could "
                 "therefore influence learned state."
             )
-
             return base
 
-        # TRAIN is the expected context.
-        #
-        # VALIDATION is not considered contamination by this
-        # particular rule. It may be relevant to other
-        # diagnostics later.
         base.status = NO_EVIDENCE
-
         base.reason = (
             "No TEST feature dataset participated in the "
             "state-learning operation."
@@ -309,32 +259,15 @@ class LeakageDiagnostic:
     ) -> LeakageEvidence:
 
         input_ids = list(
-            getattr(
-                event,
-                "input_dataset_refs",
-                [],
-            )
+            getattr(event, "input_dataset_refs", [])
         )
 
         output_ids = list(
-            getattr(
-                event,
-                "output_dataset_refs",
-                [],
-            )
+            getattr(event, "output_dataset_refs", [])
         )
 
-        event_id = getattr(
-            event,
-            "event_id",
-            None,
-        )
-
-        operation = getattr(
-            event,
-            "operation",
-            None,
-        )
+        event_id = getattr(event, "event_id", None)
+        operation = getattr(event, "operation", None)
 
         base = LeakageEvidence(
             leakage_type=TARGET_FEATURE_DEPENDENCY,
@@ -349,15 +282,23 @@ class LeakageDiagnostic:
             ),
         )
 
-        target_inputs = [
+        # For sklearn transform and fit_transform, X is the
+        # first positional argument. The optional second
+        # argument y is not automatically a feature dependency.
+        if operation in {"transform", "fit_transform"}:
+            candidate_inputs = input_ids[:1]
+        else:
+            candidate_inputs = input_ids
+
+        target_inputs = {
             dataset_id
-            for dataset_id in input_ids
+            for dataset_id in candidate_inputs
             if self._has_role(
                 dataset_id,
                 TARGET_DATA,
                 dataset_references,
             )
-        ]
+        }
 
         feature_outputs = [
             dataset_id
@@ -369,34 +310,53 @@ class LeakageDiagnostic:
             )
         ]
 
-        # No target input and no target -> feature relationship.
         if not target_inputs or not feature_outputs:
-
             base.status = NO_EVIDENCE
-
             base.reason = (
                 "No target-to-feature dependency was observed "
                 "in this operation."
             )
-
             return base
 
-        # Target information directly contributes to a feature.
-        #
-        # We deliberately classify this as POTENTIAL rather than
-        # CONFIRMED because the available runtime evidence tells
-        # us that the dependency exists, but not whether it is
-        # legitimately available at prediction time.
-        base.status = POTENTIAL_LEAKAGE
+        # Inspect recorded lineage where available.
+        derived_from_target = []
 
-        base.violating_dataset_ids = target_inputs
+        for output_id in feature_outputs:
+            output_reference = dataset_references.get(output_id)
+
+            if output_reference is None:
+                continue
+
+            parents = set(
+                output_reference.parent_dataset_ids
+            )
+
+            if target_inputs.intersection(parents):
+                derived_from_target.append(output_id)
+
+        has_lineage_information = any(
+            dataset_references.get(output_id) is not None
+            and dataset_references[output_id].parent_dataset_ids
+            for output_id in feature_outputs
+        )
+
+        if has_lineage_information and not derived_from_target:
+            base.status = NO_EVIDENCE
+            base.reason = (
+                "Target data was passed to the operation, but "
+                "the recorded feature-output lineage does not "
+                "show a direct target dependency."
+            )
+            return base
+
+        base.status = POTENTIAL_LEAKAGE
+        base.violating_dataset_ids = sorted(target_inputs)
 
         base.reason = (
-            "A feature output was derived from target data. "
-            "This dependency may introduce target leakage, "
-            "but the available evidence does not establish "
-            "whether the target information was legitimately "
-            "available when the feature was created."
+            "A target dataset was identified as a possible "
+            "source of a feature output. This may introduce "
+            "target leakage, but the available evidence does "
+            "not establish whether the dependency was legitimate."
         )
 
         return base
@@ -412,9 +372,7 @@ class LeakageDiagnostic:
         dataset_references: dict[str, DatasetReference],
     ) -> bool:
 
-        reference = dataset_references.get(
-            dataset_id
-        )
+        reference = dataset_references.get(dataset_id)
 
         if reference is None:
             return False

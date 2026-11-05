@@ -1,23 +1,26 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pipediag.diagnostics.bayesian import BayesianInference
-from pipediag.diagnostics.bayesian_evidence import (
-    BayesianEvidenceInference,
-)
-from pipediag.diagnostics.diagnostic_engine import DiagnosticEngine
 from pipediag.diagnostics.diagnostic_scenario import (
     DiagnosticScenario,
 )
-from pipediag.diagnostics.diagnostic_result import DiagnosticResult
 from pipediag.diagnostics.evidence_hypothesis_map import (
     EVIDENCE_HYPOTHESIS_MAP,
 )
 from pipediag.diagnostics.evidence_likelihood import (
     EvidenceLikelihoodEvaluator,
 )
-from pipediag.diagnostics.scenario_runner import ScenarioRunner
+from pipediag.diagnostics.multi_fault_bayesian import (
+    MultiFaultBayesianInference,
+)
+from pipediag.diagnostics.multi_fault_diagnostic_engine import (
+    MultiFaultDiagnosticEngine,
+)
+from pipediag.diagnostics.multi_fault_diagnostic_result import (
+    MultiFaultDiagnosticResult,
+)
 
 from experiments.distribution_shift import (
     run_distribution_shift_pipeline,
@@ -39,7 +42,9 @@ from experiments.imbalance_pipeline import (
 
 @dataclass(frozen=True)
 class MultiFaultValidation:
-    result: DiagnosticResult
+    """Result wrapper for a multi-fault validation experiment."""
+
+    result: MultiFaultDiagnosticResult
 
     @property
     def posterior(self) -> dict[str, float]:
@@ -60,52 +65,46 @@ class MultiFaultValidation:
     def top_two_hypotheses(self) -> list[str]:
         return [
             hypothesis
-            for hypothesis, _ in sorted(
-                self.result.posterior.items(),
-                key=lambda item: item[1],
-                reverse=True,
-            )[:2]
+            for hypothesis, _ in self.result.ranked_hypotheses[:2]
         ]
+
+    @property
+    def detected_hypotheses(self) -> frozenset[str]:
+        return self.result.detected_hypotheses
 
 
 class DistributionShiftImbalanceEvidenceProvider:
+    """Collects G3 and G4 evidence for the multi-fault scenario."""
+
     def collect(
         self,
         scenario: DiagnosticScenario,
     ) -> list:
-        n_samples = scenario.configuration.get(
-            "n_samples",
-            500,
-        )
-        n_features = scenario.configuration.get(
-            "n_features",
-            10,
-        )
-        test_size = scenario.configuration.get(
-            "test_size",
-            0.2,
-        )
-        shift_magnitude = scenario.configuration.get(
+
+        configuration = scenario.configuration
+
+        n_samples = configuration.get("n_samples", 500)
+        n_features = configuration.get("n_features", 10)
+        test_size = configuration.get("test_size", 0.2)
+        shift_magnitude = configuration.get(
             "shift_magnitude",
-            1.5,
+            0.5,
         )
-        minority_fraction = scenario.configuration.get(
+        minority_fraction = configuration.get(
             "minority_fraction",
             0.10,
         )
-        random_state = scenario.configuration.get(
+        random_state = configuration.get(
             "random_state",
             42,
         )
 
-        distribution_shift_result = (
-            run_distribution_shift_pipeline(
-                n_samples=n_samples,
-                n_features=n_features,
-                test_size=test_size,
-                shift_magnitude=shift_magnitude,
-                random_state=random_state,
-            )
+        distribution_shift_result = run_distribution_shift_pipeline(
+            n_samples=n_samples,
+            n_features=n_features,
+            test_size=test_size,
+            shift_magnitude=shift_magnitude,
+            random_state=random_state,
         )
 
         imbalance_result = run_imbalance_pipeline(
@@ -116,35 +115,42 @@ class DistributionShiftImbalanceEvidenceProvider:
             random_state=random_state,
         )
 
+        distribution_evidence = collect_distribution_shift_evidence(
+            distribution_shift_result,
+        )
+
+        imbalance_evidence = collect_imbalance_evidence(
+            imbalance_result,
+        )
+
         return [
-            collect_distribution_shift_evidence(
-                distribution_shift_result,
-            ),
-            collect_imbalance_evidence(
-                imbalance_result,
-            ),
+            distribution_evidence,
+            imbalance_evidence,
         ]
 
 
-def build_multi_fault_engine() -> DiagnosticEngine:
-    registry = build_calibrated_likelihood_registry()
+def build_multi_fault_engine(
+    priors: dict[str, float] | None = None,
+    detection_threshold: float = 0.5,
+) -> MultiFaultDiagnosticEngine:
+    """Builds the independent multi-fault diagnostic engine."""
 
-    bayesian_inference = BayesianInference(
-        hypothesis_ids=list(HYPOTHESIS_IDS),
-    )
+    registry = build_calibrated_likelihood_registry()
 
     likelihood_evaluator = EvidenceLikelihoodEvaluator(
         registry=registry,
         evidence_hypothesis_map=EVIDENCE_HYPOTHESIS_MAP,
     )
 
-    bayesian_evidence_inference = BayesianEvidenceInference(
-        bayesian_inference=bayesian_inference,
+    bayesian_inference = MultiFaultBayesianInference(
+        hypothesis_ids=HYPOTHESIS_IDS,
+        priors=priors,
     )
 
-    return DiagnosticEngine(
+    return MultiFaultDiagnosticEngine(
         likelihood_evaluator=likelihood_evaluator,
-        bayesian_evidence_inference=bayesian_evidence_inference,
+        bayesian_inference=bayesian_inference,
+        detection_threshold=detection_threshold,
     )
 
 
@@ -152,6 +158,8 @@ def build_distribution_shift_imbalance_scenario(
     *,
     random_state: int = 42,
 ) -> DiagnosticScenario:
+    """Creates a scenario with both H3 and H4 injected."""
+
     return DiagnosticScenario(
         scenario_id="multi_fault_H3_H4",
         expected_hypothesis=None,
@@ -177,24 +185,30 @@ def build_distribution_shift_imbalance_scenario(
 def run_distribution_shift_imbalance_validation(
     *,
     random_state: int = 42,
+    priors: dict[str, float] | None = None,
+    detection_threshold: float = 0.5,
 ) -> MultiFaultValidation:
+    """Runs the complete H3 + H4 multi-fault experiment."""
+
     scenario = build_distribution_shift_imbalance_scenario(
         random_state=random_state,
     )
 
-    evidence_provider = (
-        DistributionShiftImbalanceEvidenceProvider()
+    evidence_provider = DistributionShiftImbalanceEvidenceProvider()
+
+    evidence = evidence_provider.collect(scenario)
+
+    diagnostic_engine = build_multi_fault_engine(
+        priors=priors,
+        detection_threshold=detection_threshold,
     )
 
-    diagnostic_engine = build_multi_fault_engine()
-
-    runner = ScenarioRunner(
-        evidence_provider=evidence_provider,
-        diagnostic_engine=diagnostic_engine,
+    result = diagnostic_engine.diagnose(
+        evidence_groups=evidence,
+        metadata={
+            **scenario.metadata,
+            "scenario_id": scenario.scenario_id,
+        },
     )
 
-    result = runner.run(scenario)
-
-    return MultiFaultValidation(
-        result=result,
-    )
+    return MultiFaultValidation(result=result)

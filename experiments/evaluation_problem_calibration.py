@@ -1,144 +1,78 @@
+
 from __future__ import annotations
 
-from pipediag.diagnostics.calibration import (
-    CalibrationObservation,
-)
+import math
 
-from experiments.evaluation_problem_evidence import (
-    collect_evaluation_problem_evidence,
-)
+from pipediag.diagnostics.calibration import CalibrationObservation
+
 from experiments.evaluation_problem_pipeline import (
+    DEFAULT_MAX_WILSON_HALF_WIDTH,
     run_evaluation_problem_pipeline,
 )
 
 
 def collect_evaluation_problem_calibration_observations(
-    n_samples: int = 500,
     n_features: int = 10,
-    random_states: tuple[int, ...] = (
-        1,
-        2,
-        3,
-        4,
-        5,
+    n_samples_values: tuple[int, ...] = (
+        200, 300, 500, 750, 1000, 1500, 2000,
     ),
-    reliable_test_sizes: tuple[float, ...] = (
-        0.20,
-        0.25,
-        0.20,
-        0.25,
-        0.20,
+    test_sizes: tuple[float, ...] = (
+        0.05, 0.08, 0.10, 0.15, 0.20, 0.25, 0.30,
     ),
-    unreliable_test_sizes: tuple[float, ...] = (
-        0.02,
-        0.03,
-        0.04,
-        0.05,
-        0.02,
-    ),
+    random_states: tuple[int, ...] = tuple(range(1, 21)),
+    max_wilson_half_width: float = DEFAULT_MAX_WILSON_HALF_WIDTH,
 ) -> list[CalibrationObservation]:
 
+    if n_features <= 0:
+        raise ValueError("n_features must be positive")
+
+    if not n_samples_values or any(n <= 0 for n in n_samples_values):
+        raise ValueError("n_samples_values must contain positive values")
+
+    if not test_sizes or any(not 0.0 < size < 1.0 for size in test_sizes):
+        raise ValueError("test_sizes must be between 0 and 1")
+
     if not random_states:
+        raise ValueError("random_states must not be empty")
+
+    if not 0.0 < max_wilson_half_width < 1.0:
+        raise ValueError("max_wilson_half_width must be between 0 and 1")
+
+    observations: list[CalibrationObservation] = []
+
+    for n_samples in n_samples_values:
+        for test_size in test_sizes:
+            for random_state in random_states:
+                result = run_evaluation_problem_pipeline(
+                    n_samples=n_samples,
+                    n_features=n_features,
+                    test_size=test_size,
+                    random_state=random_state,
+                    max_wilson_half_width=max_wilson_half_width,
+                )
+
+                observations.append(
+                    CalibrationObservation(
+                        evidence_group="G6",
+                        hypothesis="H6",
+                        hypothesis_true=(
+                            not result.evaluation_precision_adequate
+                        ),
+                        value=math.log(result.wilson_interval_half_width),
+                        measurement="log_wilson_interval_half_width",
+                    )
+                )
+
+    true_count = sum(
+        observation.hypothesis_true
+        for observation in observations
+    )
+    false_count = len(observations) - true_count
+
+    if true_count == 0 or false_count == 0:
         raise ValueError(
-            "random_states must not be empty"
-        )
-
-    if len(reliable_test_sizes) != len(
-        random_states
-    ):
-        raise ValueError(
-            "reliable_test_sizes must have the "
-            "same length as random_states"
-        )
-
-    if len(unreliable_test_sizes) != len(
-        random_states
-    ):
-        raise ValueError(
-            "unreliable_test_sizes must have the "
-            "same length as random_states"
-        )
-
-    if any(
-        not 0.0 < size < 1.0
-        for size in reliable_test_sizes
-    ):
-        raise ValueError(
-            "reliable_test_sizes must be between "
-            "0 and 1"
-        )
-
-    if any(
-        not 0.0 < size < 1.0
-        for size in unreliable_test_sizes
-    ):
-        raise ValueError(
-            "unreliable_test_sizes must be between "
-            "0 and 1"
-        )
-
-    observations: list[
-        CalibrationObservation
-    ] = []
-
-    for (
-        random_state,
-        reliable_size,
-        unreliable_size,
-    ) in zip(
-        random_states,
-        reliable_test_sizes,
-        unreliable_test_sizes,
-    ):
-
-        reliable_result = (
-            run_evaluation_problem_pipeline(
-                n_samples=n_samples,
-                n_features=n_features,
-                test_size=reliable_size,
-                random_state=random_state,
-            )
-        )
-
-        reliable_evidence = (
-            collect_evaluation_problem_evidence(
-                reliable_result
-            )
-        )
-
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G6",
-                hypothesis="H6",
-                hypothesis_true=False,
-                value=reliable_evidence.value,
-                measurement="evaluation_standard_error",
-            )
-        )
-
-        unreliable_result = (
-            run_evaluation_problem_pipeline(
-                n_samples=n_samples,
-                n_features=n_features,
-                test_size=unreliable_size,
-                random_state=random_state,
-            )
-        )
-
-        unreliable_evidence = (
-            collect_evaluation_problem_evidence(
-                unreliable_result
-            )
-        )
-
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G6",
-                hypothesis="H6",
-                hypothesis_true=True,
-                value=unreliable_evidence.value,
-                measurement="evaluation_standard_error",
-            )
+            "G6 calibration must contain both H6 TRUE and H6 FALSE "
+            "observations. Expand the sample-size or test-size ranges."
         )
 
     return observations

@@ -1,4 +1,7 @@
+
 from __future__ import annotations
+
+import math
 
 from pipediag.diagnostics.calibration import (
     CalibrationObservation,
@@ -14,150 +17,89 @@ from experiments.feature_problem_pipeline import (
 
 def collect_feature_problem_calibration_observations(
     n_samples: int = 500,
-    n_features: int = 10,
-    random_states: tuple[int, ...] = (
-        1,
-        2,
-        3,
-        4,
-        5,
-    ),
-    normal_constant_feature_ratios: tuple[float, ...] = (
-        0.00,
-        0.00,
-        0.10,
-        0.00,
-        0.10,
-    ),
-    faulty_constant_feature_ratios: tuple[float, ...] = (
-        0.50,
-        0.60,
-        0.70,
-        0.80,
-        0.90,
-    ),
+    n_features: int = 50,
+    random_states: tuple[int, ...] = tuple(range(1, 21)),
+    normal_constant_feature_ratios: tuple[float, ...] | None = None,
+    faulty_constant_feature_ratios: tuple[float, ...] | None = None,
 ) -> list[CalibrationObservation]:
 
     if not random_states:
+        raise ValueError("random_states must not be empty")
+
+    if len(random_states) != len(set(random_states)):
+        raise ValueError("random_states must be unique")
+
+    if normal_constant_feature_ratios is None:
+        normal_constant_feature_ratios = (
+            0.00, 0.04, 0.08, 0.12, 0.16,
+        )
+    elif len(normal_constant_feature_ratios) != len(random_states):
         raise ValueError(
-            "random_states must not be empty"
+            "normal_constant_feature_ratios length must match random_states"
         )
 
-    if len(normal_constant_feature_ratios) != len(
-        random_states
-    ):
+    if faulty_constant_feature_ratios is None:
+        faulty_constant_feature_ratios = (
+            0.20, 0.30, 0.40, 0.50, 0.60, 0.70,
+        )
+    elif len(faulty_constant_feature_ratios) != len(random_states):
         raise ValueError(
-            "normal_constant_feature_ratios must have "
-            "the same length as random_states"
+            "faulty_constant_feature_ratios length must match random_states"
         )
 
-    if len(faulty_constant_feature_ratios) != len(
-        random_states
+    for ratio in (
+        normal_constant_feature_ratios
+        + faulty_constant_feature_ratios
     ):
-        raise ValueError(
-            "faulty_constant_feature_ratios must have "
-            "the same length as random_states"
-        )
-
-    if any(
-        not 0.0 <= ratio < 1.0
-        for ratio in normal_constant_feature_ratios
-    ):
-        raise ValueError(
-            "normal_constant_feature_ratios must be "
-            "between 0 and 1"
-        )
-
-    if any(
-        not 0.0 <= ratio < 1.0
-        for ratio in faulty_constant_feature_ratios
-    ):
-        raise ValueError(
-            "faulty_constant_feature_ratios must be "
-            "between 0 and 1"
-        )
+        if not math.isfinite(ratio) or not 0.0 <= ratio < 1.0:
+            raise ValueError("Invalid constant feature ratio")
 
     observations: list[CalibrationObservation] = []
 
-    for (
-        random_state,
-        normal_ratio,
-        faulty_ratio,
-    ) in zip(
-        random_states,
-        normal_constant_feature_ratios,
-        faulty_constant_feature_ratios,
-    ):
-        normal_result = run_feature_problem_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            constant_feature_ratio=normal_ratio,
-            random_state=random_state,
-        )
+    for random_state in random_states:
 
-        normal_evidence = (
-            collect_feature_problem_evidence(
-                normal_result
+        # Normal scenarios: H8 is false.
+        for ratio in normal_constant_feature_ratios:
+
+            result = run_feature_problem_pipeline(
+                n_samples=n_samples,
+                n_features=n_features,
+                constant_feature_ratio=ratio,
+                random_state=random_state,
             )
-        )
 
-        # G7 -> H8 primary relationship.
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G7",
-                hypothesis="H8",
-                hypothesis_true=False,
-                value=normal_evidence.value,
-                measurement="constant_feature_ratio",
+            evidence = collect_feature_problem_evidence(result)
+
+            observations.append(
+                CalibrationObservation(
+                    evidence_group="G7",
+                    hypothesis="H8",
+                    hypothesis_true=False,
+                    value=evidence.value,
+                    measurement="constant_feature_ratio",
+                )
             )
-        )
 
-        faulty_result = run_feature_problem_pipeline(
-            n_samples=n_samples,
-            n_features=n_features,
-            constant_feature_ratio=faulty_ratio,
-            random_state=random_state,
-        )
+        # Faulty scenarios: H8 is true.
+        for ratio in faulty_constant_feature_ratios:
 
-        faulty_evidence = (
-            collect_feature_problem_evidence(
-                faulty_result
+            result = run_feature_problem_pipeline(
+                n_samples=n_samples,
+                n_features=n_features,
+                constant_feature_ratio=ratio,
+                random_state=random_state,
             )
-        )
 
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G7",
-                hypothesis="H8",
-                hypothesis_true=True,
-                value=faulty_evidence.value,
-                measurement="constant_feature_ratio",
-            )
-        )
+            evidence = collect_feature_problem_evidence(result)
 
-        # G7 -> H7 secondary relationship.
-        #
-        # The same feature evidence can also support
-        # underfitting, but with a separate calibrated
-        # hypothesis relationship.
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G7",
-                hypothesis="H7",
-                hypothesis_true=False,
-                value=normal_evidence.value,
-                measurement="constant_feature_ratio",
+            observations.append(
+                CalibrationObservation(
+                    evidence_group="G7",
+                    hypothesis="H8",
+                    hypothesis_true=True,
+                    value=evidence.value,
+                    measurement="constant_feature_ratio",
+                )
             )
-        )
-
-        observations.append(
-            CalibrationObservation(
-                evidence_group="G7",
-                hypothesis="H7",
-                hypothesis_true=True,
-                value=faulty_evidence.value,
-                measurement="constant_feature_ratio",
-            )
-        )
 
     return observations
